@@ -61,7 +61,7 @@ async function loadRandomKif(){
 
   currentKif = file;
 
-  const res = await fetch(`kif/${file}?v=${Date.now()}`);, {
+  const res = await fetch(`kif/${file}?v=${Date.now()}`, {
     cache: "no-store"
   });
   const buffer = await res.arrayBuffer();
