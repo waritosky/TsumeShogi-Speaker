@@ -123,20 +123,26 @@ async function loadKifList(){
 
 async function loadRandomKif(){
 
-  if(kifList.length===0) return;
+  if(kifList.length === 0) return;
 
-  const file = kifList[Math.floor(Math.random()*kifList.length)];
+  const r = Math.floor(Math.random() * kifList.length);
+  const file = kifList[r];
+
   currentKif = file;
 
-  const res = await fetch("kif/"+file+"?v="+Date.now());
-  const text = await res.text();
+  const res = await fetch("kif/" + file);
+  const buffer = await res.arrayBuffer();
 
-  resetGame();
+  // ★ ここが超重要
+  const decoder = new TextDecoder("shift_jis");
+  const text = decoder.decode(buffer);
 
   parseBoard(text);
+  parseHands(text);
   parseKIF(text);
 
   startAutoPlay();
+
 }
 
 /* =========================
