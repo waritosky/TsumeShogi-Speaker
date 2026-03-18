@@ -171,14 +171,27 @@ function parseBoard(text){
     }
   }
 
+  // ★ 盤面が足りない場合
+  if(boardLines.length < 9){
+    console.error("盤面解析失敗: 行不足");
+    return;
+  }
+
   for(let y=0;y<9;y++){
 
     let row=boardLines[y];
 
     row=row.replace(/\|/g,"");
     row=row.replace(/[一二三四五六七八九]/g,"");
+    row=row.replace(/\s/g,""); // ★ 空白除去
 
     const cells=row.match(/v?[歩香桂銀金角飛玉王と杏圭全龍馬]|・/g);
+
+    // ★ ここが重要（null防御）
+    if(!cells || cells.length !== 9){
+      console.warn("盤面解析スキップ:", row);
+      continue;
+    }
 
     for(let x=0;x<9;x++){
 
