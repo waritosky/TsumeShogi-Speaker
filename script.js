@@ -38,7 +38,9 @@ function initBoard(){
 // ==============================
 async function loadIndex(){
   try{
-    const res = await fetch("index.json");
+    const res = await fetch(`index.json?v=${Date.now()}`, {
+      cache: "no-store"
+    });
     const data = await res.json();
     kifList = data.files;
   }catch(e){
@@ -59,7 +61,9 @@ async function loadRandomKif(){
 
   currentKif = file;
 
-  const res = await fetch("kif/" + file);
+  const res = await fetch(`kif/${file}?v=${Date.now()}`);, {
+    cache: "no-store"
+  });
   const buffer = await res.arrayBuffer();
 
   const decoder = new TextDecoder("shift_jis");
