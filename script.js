@@ -13,6 +13,40 @@ let senteHands = "なし";
 
 
 // ==============================
+// 読み替えテーブル
+// ==============================
+const pieceYomi = {
+  "歩":"ふ",
+  "香":"きょう",
+  "桂":"けい",
+  "銀":"ぎん",
+  "金":"きん",
+  "角":"かく",
+  "飛":"ひ",
+  "玉":"ぎょく",
+  "王":"ぎょく",
+  "と":"と",
+  "杏":"なりきょう",
+  "圭":"なりけい",
+  "全":"なりぎん",
+  "龍":"りゅう",
+  "馬":"うま"
+};
+
+const numberYomi = {
+  "１":"いち",
+  "２":"にー",
+  "３":"さん",
+  "４":"よん",
+  "５":"ごー",
+  "６":"ろく",
+  "７":"なな",
+  "８":"はち",
+  "９":"きゅう"
+};
+
+
+// ==============================
 // 初期化
 // ==============================
 initBoard();
@@ -38,9 +72,7 @@ function initBoard(){
 // ==============================
 async function loadIndex(){
   try{
-    const res = await fetch(`index.json?v=${Date.now()}`, {
-      cache: "no-store"
-    });
+    const res = await fetch(`index.json?v=${Date.now()}`, {cache:"no-store"});
     const data = await res.json();
     kifList = data.files;
   }catch(e){
@@ -50,7 +82,7 @@ async function loadIndex(){
 
 
 // ==============================
-// KIF読み込み（SJIS対応）
+// KIF読み込み
 // ==============================
 async function loadRandomKif(){
 
@@ -61,9 +93,7 @@ async function loadRandomKif(){
 
   currentKif = file;
 
-  const res = await fetch(`kif/${file}?v=${Date.now()}`, {
-    cache: "no-store"
-  });
+  const res = await fetch(`kif/${file}?v=${Date.now()}`, {cache:"no-store"});
   const buffer = await res.arrayBuffer();
 
   const decoder = new TextDecoder("shift_jis");
@@ -77,12 +107,12 @@ async function loadRandomKif(){
   parseHands(text);
   parseKIF(text);
 
-  startAutoPlay();
+  await startAutoPlay();
 }
 
 
 // ==============================
-// 盤面解析（強化版）
+// 盤面解析
 // ==============================
 function parseBoard(text){
 
@@ -223,7 +253,32 @@ function drawPieces(){
 
 
 // ==============================
-// 音声
+// 読み変換（強化版）
+// ==============================
+function convertMoveToYomi(move){
+
+  let result = move;
+
+  // 数字変換（先にやる）
+  for(const key in numberYomi){
+    result = result.replaceAll(key, numberYomi[key]);
+  }
+
+  // 駒変換
+  for(const key in pieceYomi){
+    result = result.replaceAll(key, pieceYomi[key]);
+  }
+
+  result = result.replaceAll("同", "どう");
+  result = result.replaceAll("成", "なり");
+  result = result.replaceAll("打", "うち");
+
+  return result;
+}
+
+
+// ==============================
+// 音声（直列）
 // ==============================
 function loadVoices(){
   voices = speechSynthesis.getVoices();
@@ -240,32 +295,36 @@ function loadVoices(){
 speechSynthesis.onvoiceschanged = loadVoices;
 
 function speak(text){
-  const uttr = new SpeechSynthesisUtterance(text);
-  uttr.voice = voices[voiceSelect.value];
-  speechSynthesis.speak(uttr);
+  return new Promise(resolve=>{
+    const uttr = new SpeechSynthesisUtterance(text);
+    uttr.voice = voices[voiceSelect.value];
+    uttr.onend = ()=> resolve();
+    speechSynthesis.speak(uttr);
+  });
 }
 
 
 // ==============================
 // 自動再生
 // ==============================
-function startAutoPlay(){
+async function startAutoPlay(){
 
   movesEl.innerHTML = "";
 
-  speak("攻め方の持ち駒は " + senteHands);
+  await speak("攻め方の持ち駒は " + senteHands);
 
-  setTimeout(playMoves, 1000);
+  await playMoves();
 }
 
 
-function playMoves(){
+async function playMoves(){
 
   if(currentMoveIndex >= moves.length) return;
 
   const move = moves[currentMoveIndex];
+  const yomi = convertMoveToYomi(move);
 
-  speak(move);
+  await speak(yomi);
 
   const div = document.createElement("div");
   div.textContent = move;
@@ -275,7 +334,7 @@ function playMoves(){
 
   currentMoveIndex++;
 
-  setTimeout(playMoves, 1500);
+  await playMoves();
 }
 
 
@@ -284,22 +343,18 @@ function playMoves(){
 // ==============================
 function applyMove(move){
 
-  // 「同」対応
-  let targetFile, targetRank;
-
   if(move.startsWith("同")){
-    return; // 簡易（必要なら拡張）
+    return;
   }
 
   const file = move.charAt(0);
   const rank = move.charAt(1);
 
-  targetFile = "１２３４５６７８９".indexOf(file) + 1;
-  targetRank = "一二三四五六七八九".indexOf(rank) + 1;
+  const targetFile = "１２３４５６７８９".indexOf(file) + 1;
+  const targetRank = "一二三四五六七八九".indexOf(rank) + 1;
 
   if(targetFile <= 0 || targetRank <= 0) return;
 
-  // 仮で最初に見つかった駒を移動
   const piece = boardPieces.find(p=>p.side==="sente");
 
   if(piece){
