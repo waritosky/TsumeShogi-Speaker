@@ -9,6 +9,7 @@ let currentMoveIndex = 0;
 let kifList = [];
 let voices = [];
 let senteHands = "なし";
+let senteHandsMap = {};
 
 
 // ==============================
@@ -180,11 +181,52 @@ function convertHandsToYomi(hands){
   }).join("、");
 }
 
+// ==============================
+function updateHandsDisplay(){
+
+  const el = document.getElementById("senteHandsDisplay");
+  el.innerHTML = "";
+
+  Object.entries(senteHandsMap).forEach(([piece, count])=>{
+
+    if(count <= 0) return;
+
+    const div = document.createElement("div");
+    div.textContent = `${piece}×${count}`;
+    el.appendChild(div);
+  });
+}
 
 // ==============================
 function parseHands(text){
-  const line=text.split(/\r?\n/).find(l=>l.includes("先手の持駒"));
-  senteHands=line? (line.split("：")[1]||"").trim()||"なし":"なし";
+
+  const line = text.split(/\r?\n/).find(l=>l.includes("先手の持駒"));
+
+  senteHandsMap = {};
+
+  if(!line){
+    senteHands = "なし";
+    return;
+  }
+
+  senteHands = (line.split("：")[1] || "").trim() || "なし";
+
+  if(senteHands === "なし") return;
+
+  senteHands.split("　").forEach(item=>{
+
+    const match = item.match(/^([歩香桂銀金角飛玉王と杏圭全龍馬])(.*)$/);
+    if(!match) return;
+
+    const piece = match[1];
+    const numKanji = match[2] || "一";
+
+    const num = "一二三四五六七八九".indexOf(numKanji) + 1;
+
+    senteHandsMap[piece] = num;
+  });
+
+  updateHandsDisplay();
 }
 
 
@@ -301,15 +343,73 @@ function applyMove(move){
 
   if(move.startsWith("同")) return;
 
-  const file="１２３４５６７８９".indexOf(move[0])+1;
-  const rank="一二三四五六七八九".indexOf(move[1])+1;
+  const file = "１２３４５６７８９".indexOf(move[0]) + 1;
+  const rank = "一二三四五六七八九".indexOf(move[1]) + 1;
 
-  const piece=boardPieces.find(p=>p.side==="sente");
+  const isDrop = move.includes("打");
 
-  if(piece){
-    piece.file=file;
-    piece.rank=rank;
+  const pieceMatch = move.match(/[歩香桂銀金角飛玉王と杏圭全龍馬]/);
+  const piece = pieceMatch ? pieceMatch[0] : null;
+
+  // ======================
+  // 打つ場合（持ち駒減少）
+  // ======================
+  if(isDrop && piece){
+
+    if(senteHandsMap[piece]){
+      senteHandsMap[piece]--;
+    }
+
+    boardPieces.push({
+      file,
+      rank,
+      piece,
+      side:"sente"
+    });
+
+    updateHandsDisplay();
+    drawPieces();
+    return;
   }
+
+  // ======================
+  // 通常移動
+  // ======================
+  const movingPiece = boardPieces.find(p=>p.side==="sente");
+
+  if(!movingPiece) return;
+
+  // ======================
+  // 取る処理（玉方の駒がある場合）
+  // ======================
+  const captured = boardPieces.find(
+    p=>p.file===file && p.rank===rank && p.side==="gote"
+  );
+
+  if(captured){
+
+    const basePiece = captured.piece.replace(/[と杏圭全龍馬]/, (m)=>{
+      return {
+        "と":"歩",
+        "杏":"香",
+        "圭":"桂",
+        "全":"銀",
+        "龍":"飛",
+        "馬":"角"
+      }[m];
+    });
+
+    senteHandsMap[basePiece] = (senteHandsMap[basePiece] || 0) + 1;
+
+    // 駒削除
+    boardPieces = boardPieces.filter(p=>p !== captured);
+
+    updateHandsDisplay();
+  }
+
+  // 移動
+  movingPiece.file = file;
+  movingPiece.rank = rank;
 
   drawPieces();
 }

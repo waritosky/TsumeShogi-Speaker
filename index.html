@@ -162,7 +162,32 @@ input, select{
   box-shadow:0 2px 6px rgba(0,0,0,0.1);
   font-size:14px;
 }
+#handsArea {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+}
 
+.handsBox {
+  background: #f5deb3; /* 将棋盤っぽい色 */
+  border: 2px solid #8b5a2b;
+  border-radius: 8px;
+  padding: 10px;
+  min-width: 180px;
+  font-family: "Hiragino Mincho ProN", serif;
+}
+
+.handsTitle {
+  font-size: 14px;
+  margin-bottom: 5px;
+}
+
+#senteHandsDisplay {
+  font-size: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 </style>
 </head>
 
@@ -190,6 +215,13 @@ input, select{
   </div>
 
   <div id="board"></div>
+
+  <div id="handsArea">
+    <div id="senteHandsBox" class="handsBox">
+      <div class="handsTitle">攻め方 持ち駒</div>
+      <div id="senteHandsDisplay"></div>
+    </div>
+  </div>
 
   <div id="moves"></div>
 
