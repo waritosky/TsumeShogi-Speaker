@@ -157,7 +157,7 @@ async function readBoard(){
 // ==============================
 function formatBoardYomi(p){
 
-  const fileFull="１２３４５６７８９"[p.file-1];
+  const fileFull="９８７６５４３２１"[p.file-1];
   const file=numberYomi[fileFull];
 
   const rankKanji="一二三四五六七八九"[p.rank-1];
