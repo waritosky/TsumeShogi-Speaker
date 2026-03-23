@@ -162,19 +162,20 @@ input, select{
   box-shadow:0 2px 6px rgba(0,0,0,0.1);
   font-size:14px;
 }
-#handsArea {
-  margin-top: 10px;
+#gameWrapper {
   display: flex;
-  justify-content: flex-end;
+  align-items: flex-end; /* ← 下揃えのコア */
+  gap: 10px;
+}
+#handsArea {
+  display: flex;
+  align-items: flex-end;
 }
 
-.handsBox {
-  background: #f5deb3; /* 将棋盤っぽい色 */
-  border: 2px solid #8b5a2b;
-  border-radius: 8px;
-  padding: 10px;
-  min-width: 180px;
-  font-family: "Hiragino Mincho ProN", serif;
+#senteHandsBox {
+  display: grid;
+  grid-template-columns: repeat(1, 40px);
+  gap: 2px;
 }
 
 .handsTitle {
@@ -182,11 +183,16 @@ input, select{
   margin-bottom: 5px;
 }
 
-#senteHandsDisplay {
-  font-size: 18px;
+.handPiece {
+  width: 40px;
+  height: 40px;
+  border: 1px solid #6b4b16;
+  background: #f4c66b;
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  font-family: "Hiragino Mincho ProN", serif;
+  font-size: 14px;
 }
 </style>
 </head>
@@ -214,13 +220,12 @@ input, select{
     </label>
   </div>
 
-  <div id="board"></div>
-
-  <div id="handsArea">
-    <div id="senteHandsBox" class="handsBox">
-      <div class="handsTitle">攻め方 持ち駒</div>
+  <div id="gameWrapper">
+    <div id="board"></div>
+    <div id="handsArea">
       <div id="senteHandsDisplay"></div>
     </div>
+
   </div>
 
   <div id="moves"></div>

@@ -192,7 +192,11 @@ function updateHandsDisplay(){
     if(count <= 0) return;
 
     const div = document.createElement("div");
+    div.className = "handPiece";
+
+    // 縦1行表示（駒×数）
     div.textContent = `${piece}×${count}`;
+
     el.appendChild(div);
   });
 }
