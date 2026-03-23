@@ -22,7 +22,7 @@ const pieceYomi = {
   "銀":"ぎん",
   "金":"きん",
   "角":"かく",
-  "飛":"ひ",
+  "飛":"ひしゃ",
   "玉":"ぎょく",
   "王":"ぎょく",
   "と":"と",
@@ -166,6 +166,38 @@ function parseBoard(text){
 
 
 // ==============================
+// ★盤面読み上げ（新規追加）
+// ==============================
+async function readBoard(){
+
+  // 並び替え（玉方→攻め方、上→下、右→左）
+  const sorted = [...boardPieces].sort((a,b)=>{
+
+    if(a.side !== b.side){
+      return a.side === "gote" ? -1 : 1;
+    }
+
+    if(a.rank !== b.rank){
+      return a.rank - b.rank;
+    }
+
+    return b.file - a.file;
+  });
+
+  for(const p of sorted){
+
+    const file = numberYomi[String(p.file).replace(/[0-9]/g, d=>"０１２３４５６７８９"[d])] || "";
+    const rankKanji = "一二三四五六七八九"[p.rank - 1];
+    const rank = convertMoveToYomi(rankKanji);
+
+    const piece = pieceYomi[p.piece];
+
+    await speak(file + rank + " " + piece);
+  }
+}
+
+
+// ==============================
 // 持ち駒解析
 // ==============================
 function parseHands(text){
@@ -253,18 +285,16 @@ function drawPieces(){
 
 
 // ==============================
-// 読み変換（強化版）
+// 読み変換
 // ==============================
 function convertMoveToYomi(move){
 
   let result = move;
 
-  // 数字変換（先にやる）
   for(const key in numberYomi){
     result = result.replaceAll(key, numberYomi[key]);
   }
 
-  // 駒変換
   for(const key in pieceYomi){
     result = result.replaceAll(key, pieceYomi[key]);
   }
@@ -278,7 +308,7 @@ function convertMoveToYomi(move){
 
 
 // ==============================
-// 音声（直列）
+// 音声
 // ==============================
 function loadVoices(){
   voices = speechSynthesis.getVoices();
@@ -311,7 +341,9 @@ async function startAutoPlay(){
 
   movesEl.innerHTML = "";
 
-  await speak("攻め方の持ち駒は " + senteHands);
+  await speak("せめかたのもちごまは " + senteHands);
+
+  await readBoard(); // ★ここ追加
 
   await playMoves();
 }
@@ -339,7 +371,7 @@ async function playMoves(){
 
 
 // ==============================
-// 駒移動（簡易版）
+// 駒移動
 // ==============================
 function applyMove(move){
 
