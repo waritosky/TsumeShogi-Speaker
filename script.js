@@ -22,7 +22,7 @@ const pieceYomi = {
   "銀":"ぎん",
   "金":"きん",
   "角":"かく",
-  "飛":"ひしゃ",
+  "飛":"ひ",
   "玉":"ぎょく",
   "王":"ぎょく",
   "と":"と",
@@ -55,8 +55,6 @@ loadIndex();
 
 
 // ==============================
-// ボード生成
-// ==============================
 function initBoard(){
   boardEl.innerHTML = "";
   for(let i=0;i<81;i++){
@@ -67,8 +65,6 @@ function initBoard(){
 }
 
 
-// ==============================
-// index.json 読み込み
 // ==============================
 async function loadIndex(){
   try{
@@ -81,8 +77,6 @@ async function loadIndex(){
 }
 
 
-// ==============================
-// KIF読み込み
 // ==============================
 async function loadRandomKif(){
 
@@ -112,8 +106,6 @@ async function loadRandomKif(){
 
 
 // ==============================
-// 盤面解析
-// ==============================
 function parseBoard(text){
 
   const lines = text.split(/\r?\n/);
@@ -125,11 +117,6 @@ function parseBoard(text){
     }
   }
 
-  if(boardLines.length < 9){
-    console.error("盤面不足");
-    return;
-  }
-
   for(let y=0;y<9;y++){
 
     let row = boardLines[y];
@@ -139,11 +126,6 @@ function parseBoard(text){
     row = row.replace(/\s/g,"");
 
     const cells = row.match(/v?[歩香桂銀金角飛玉王と杏圭全龍馬]|・/g);
-
-    if(!cells || cells.length !== 9){
-      console.warn("解析失敗:", row);
-      continue;
-    }
 
     for(let x=0;x<9;x++){
 
@@ -166,80 +148,79 @@ function parseBoard(text){
 
 
 // ==============================
-// ★盤面読み上げ（新規追加）
+// ★盤面読み上げ（改善版）
 // ==============================
 async function readBoard(){
 
-  // 並び替え（玉方→攻め方、上→下、右→左）
-  const sorted = [...boardPieces].sort((a,b)=>{
+  await speak("ばんめんをよみあげます");
 
-    if(a.side !== b.side){
-      return a.side === "gote" ? -1 : 1;
-    }
+  // 玉方
+  await speak("ぎょくかたのこま");
 
-    if(a.rank !== b.rank){
-      return a.rank - b.rank;
-    }
+  const gotePieces = boardPieces
+    .filter(p=>p.side==="gote")
+    .sort(sortBoard);
 
-    return b.file - a.file;
-  });
+  for(const p of gotePieces){
+    await speak(formatPiece(p));
+  }
 
-  for(const p of sorted){
+  // 攻め方
+  await speak("せめかたのこま");
 
-    const file = numberYomi[String(p.file).replace(/[0-9]/g, d=>"０１２３４５６７８９"[d])] || "";
-    const rankKanji = "一二三四五六七八九"[p.rank - 1];
-    const rank = convertMoveToYomi(rankKanji);
+  const sentePieces = boardPieces
+    .filter(p=>p.side==="sente")
+    .sort(sortBoard);
 
-    const piece = pieceYomi[p.piece];
-
-    await speak(file + rank + " " + piece);
+  for(const p of sentePieces){
+    await speak(formatPiece(p));
   }
 }
 
 
 // ==============================
-// 持ち駒解析
+function sortBoard(a,b){
+  if(a.rank !== b.rank) return a.rank - b.rank;
+  return b.file - a.file;
+}
+
+
+// ==============================
+function formatPiece(p){
+
+  const file = numberYomi[String(p.file).replace(/[0-9]/g, d=>"０１２３４５６７８９"[d])] || "";
+  const rank = convertMoveToYomi("一二三四五六七八九"[p.rank - 1]);
+  const piece = pieceYomi[p.piece];
+
+  return file + rank + " " + piece;
+}
+
+
 // ==============================
 function parseHands(text){
-
   const lines = text.split(/\r?\n/);
-  let found = false;
 
   for(let line of lines){
-
     if(line.includes("先手の持駒")){
-
-      found = true;
-
       let hand = line.split("：")[1];
-
       if(!hand || hand.trim() === ""){
         senteHands = "なし";
         return;
       }
-
-      hand = hand.replace(/\u3000/g, " ").trim();
-
-      senteHands = hand === "なし" ? "なし" : hand;
+      senteHands = hand.replace(/\u3000/g," ").trim();
       return;
     }
   }
 
-  if(!found){
-    senteHands = "なし";
-  }
+  senteHands = "なし";
 }
 
 
 // ==============================
-// 棋譜解析
-// ==============================
 function parseKIF(text){
-
   const lines = text.split(/\r?\n/);
 
   for(let line of lines){
-
     if(/^\d+/.test(line)){
       const parts = line.trim().split(/\s+/);
       if(parts.length >= 2){
@@ -251,10 +232,7 @@ function parseKIF(text){
 
 
 // ==============================
-// 駒描画
-// ==============================
 function drawPieces(){
-
   const squares = document.querySelectorAll(".square");
 
   squares.forEach(sq=>{
@@ -263,7 +241,6 @@ function drawPieces(){
   });
 
   boardPieces.forEach(p=>{
-
     const x = 9 - p.file;
     const y = p.rank - 1;
     const index = y * 9 + x;
@@ -273,10 +250,7 @@ function drawPieces(){
     sq.classList.add("hasPiece");
     sq.dataset.piece = p.piece;
 
-    if(p.side === "gote"){
-      sq.classList.add("gote");
-    }
-
+    if(p.side === "gote") sq.classList.add("gote");
     if(["と","杏","圭","全","龍","馬"].includes(p.piece)){
       sq.classList.add("promoted");
     }
@@ -284,8 +258,6 @@ function drawPieces(){
 }
 
 
-// ==============================
-// 読み変換
 // ==============================
 function convertMoveToYomi(move){
 
@@ -307,8 +279,6 @@ function convertMoveToYomi(move){
 }
 
 
-// ==============================
-// 音声
 // ==============================
 function loadVoices(){
   voices = speechSynthesis.getVoices();
@@ -335,15 +305,15 @@ function speak(text){
 
 
 // ==============================
-// 自動再生
+// ★順序修正
 // ==============================
 async function startAutoPlay(){
 
   movesEl.innerHTML = "";
 
-  await speak("せめかたのもちごまは " + senteHands);
+  await readBoard();
 
-  await readBoard(); // ★ここ追加
+  await speak("せめかたのもちごまは " + senteHands);
 
   await playMoves();
 }
@@ -371,21 +341,15 @@ async function playMoves(){
 
 
 // ==============================
-// 駒移動
-// ==============================
 function applyMove(move){
 
-  if(move.startsWith("同")){
-    return;
-  }
+  if(move.startsWith("同")) return;
 
   const file = move.charAt(0);
   const rank = move.charAt(1);
 
   const targetFile = "１２３４５６７８９".indexOf(file) + 1;
   const targetRank = "一二三四五六七八九".indexOf(rank) + 1;
-
-  if(targetFile <= 0 || targetRank <= 0) return;
 
   const piece = boardPieces.find(p=>p.side==="sente");
 
@@ -398,8 +362,6 @@ function applyMove(move){
 }
 
 
-// ==============================
-// ボタン
 // ==============================
 startBtn.onclick = async ()=>{
   await loadRandomKif();
