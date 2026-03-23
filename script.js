@@ -103,7 +103,7 @@ function parseBoard(text){
       if(cell==="・") continue;
 
       boardPieces.push({
-        file:9-x, // ★これがすでに右→左
+        file:9-x, // 右→左
         rank:y+1,
         piece:cell.replace("v",""),
         side:cell.startsWith("v")?"gote":"sente"
@@ -116,7 +116,7 @@ function parseBoard(text){
 
 
 // ==============================
-// ★盤面読み上げ
+// ★盤面読み上げ（修正済）
 // ==============================
 async function readBoard(){
 
@@ -125,7 +125,7 @@ async function readBoard(){
   await speak("ぎょくかたのこま");
 
   for(let rank=1;rank<=9;rank++){
-    for(let file=9;file>=1;file--){
+    for(let file=1;file<=9;file++){ // ★ここ修正
 
       const p=boardPieces.find(
         x=>x.rank===rank && x.file===file && x.side==="gote"
@@ -138,7 +138,7 @@ async function readBoard(){
   await speak("せめかたのこま");
 
   for(let rank=1;rank<=9;rank++){
-    for(let file=9;file>=1;file--){
+    for(let file=1;file<=9;file++){ // ★ここ修正
 
       const p=boardPieces.find(
         x=>x.rank===rank && x.file===file && x.side==="sente"
@@ -151,11 +151,10 @@ async function readBoard(){
 
 
 // ==============================
-// ★読みフォーマット（修正済）
+// 読みフォーマット
 // ==============================
 function formatBoardYomi(p){
 
-  // ★ここを修正（反転しない）
   const fileFull="１２３４５６７８９"[p.file-1];
   const file=numberYomi[fileFull];
 
