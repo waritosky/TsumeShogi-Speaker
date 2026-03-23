@@ -103,7 +103,7 @@ function parseBoard(text){
       if(cell==="・") continue;
 
       boardPieces.push({
-        file:9-x, // 右→左
+        file:9-x,
         rank:y+1,
         piece:cell.replace("v",""),
         side:cell.startsWith("v")?"gote":"sente"
@@ -116,8 +116,6 @@ function parseBoard(text){
 
 
 // ==============================
-// ★盤面読み上げ（修正済）
-// ==============================
 async function readBoard(){
 
   await speak("ばんめんをよみあげます");
@@ -125,12 +123,10 @@ async function readBoard(){
   await speak("ぎょくかたのこま");
 
   for(let rank=1;rank<=9;rank++){
-    for(let file=1;file<=9;file++){ // ★ここ修正
-
+    for(let file=1;file<=9;file++){
       const p=boardPieces.find(
         x=>x.rank===rank && x.file===file && x.side==="gote"
       );
-
       if(p) await speak(formatBoardYomi(p));
     }
   }
@@ -138,20 +134,16 @@ async function readBoard(){
   await speak("せめかたのこま");
 
   for(let rank=1;rank<=9;rank++){
-    for(let file=1;file<=9;file++){ // ★ここ修正
-
+    for(let file=1;file<=9;file++){
       const p=boardPieces.find(
         x=>x.rank===rank && x.file===file && x.side==="sente"
       );
-
       if(p) await speak(formatBoardYomi(p));
     }
   }
 }
 
 
-// ==============================
-// 読みフォーマット
 // ==============================
 function formatBoardYomi(p){
 
@@ -164,6 +156,28 @@ function formatBoardYomi(p){
   const piece=pieceYomi[p.piece];
 
   return `${file}${rank} ${piece}`;
+}
+
+
+// ==============================
+// ★持ち駒読み上げ
+// ==============================
+function convertHandsToYomi(hands){
+
+  if(!hands || hands==="なし") return "なし";
+
+  return hands.split("　").map(item=>{
+
+    const match = item.match(/^([歩香桂銀金角飛玉王と杏圭全龍馬])(.*)$/);
+    if(!match) return item;
+
+    const piece = pieceYomi[match[1]] || match[1];
+    const numKanji = match[2] || "一";
+    const num = rankYomi[numKanji] || numKanji;
+
+    return `${piece} ${num}`;
+
+  }).join("、");
 }
 
 
@@ -255,7 +269,7 @@ async function startAutoPlay(){
 
   await readBoard();
 
-  await speak("せめかたのもちごまは "+senteHands);
+  await speak("せめかたのもちごまは "+convertHandsToYomi(senteHands));
 
   await playMoves();
 }
