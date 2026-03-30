@@ -174,38 +174,19 @@ input, select{
   background: #f4c66b;       /* 盤面と同じ色 */
   border: 4px solid #8b5a2b; /* 盤面と同じ枠 */
   padding: 6px;
-  width: 60px;               /* 適度な幅 */
+  width: 80px;               /* 適度な幅 */
   min-height: 180px;         /* 盤面と高さを合わせる目安 */
   box-sizing: border-box;
 }
-
-.handPiece {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  height: 36px;
-  margin-bottom: 4px;
-  background: #f4c66b;
-  border: 2px solid #6b4b16;
-  font-family: "Hiragino Mincho ProN", serif;
-  font-weight: bold;
-  font-size: 14px;
-  writing-mode: vertical-rl;
-  text-orientation: upright;
+#senteHandsDisplay {
+  min-height: 1em;
+  white-space: nowrap;
 }
-
-#senteHandsBox {
-  display: grid;
-  grid-template-columns: repeat(1, 40px);
-  gap: 2px;
+#senteHandsDisplay:empty::before {
+  content: " ";
+  display: block;
+  height: 1em;
 }
-
-.handsTitle {
-  font-size: 14px;
-  margin-bottom: 5px;
-}
-
 </style>
 </head>
 
@@ -224,6 +205,13 @@ input, select{
     <label>
       待ち時間（秒）
       <input id="autoDelay" type="number" value="10">
+    </label>
+
+    <label>
+      何手詰み
+      <select id="mateFilter">
+        <option value="all">すべて</option>
+      </select>
     </label>
 
     <label>

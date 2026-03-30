@@ -3,6 +3,8 @@ const movesEl = document.getElementById("moves");
 const startBtn = document.getElementById("startBtn");
 const voiceSelect = document.getElementById("voiceSelect");
 const handsContainer = document.getElementById("senteHandsDisplay");
+const autoDelayInput = document.getElementById("autoDelay");
+const mateFilterSelect = document.getElementById("mateFilter");
 
 let boardPieces = [];
 let moves = [];
@@ -10,13 +12,17 @@ let currentMoveIndex = 0;
 let kifList = [];
 let voices = [];
 let senteHands = "なし";
+let goteHands = {};
+let senteHandsMap = {};
+let currentSide = "sente";
+let lastMoveTo = null;
 
 // ==============================
 // 読み替えテーブル
 // ==============================
 const pieceYomi = {
   "歩":"ふ","香":"きょう","桂":"けい","銀":"ぎん","金":"きん",
-  "角":"かく","飛":"ひ","玉":"ぎょく","王":"ぎょく",
+  "角":"かく","飛":"ひしゃ","玉":"ぎょく","王":"ぎょく",
   "と":"と","杏":"なりきょう","圭":"なりけい",
   "全":"なりぎん","龍":"りゅう","馬":"うま"
 };
@@ -38,71 +44,110 @@ loadIndex();
 
 // ==============================
 function initBoard(){
-  boardEl.innerHTML="";
+  boardEl.innerHTML = "";
   for(let i=0;i<81;i++){
-    const sq=document.createElement("div");
-    sq.className="square";
+    const sq = document.createElement("div");
+    sq.className = "square";
     boardEl.appendChild(sq);
   }
 }
 
 // ==============================
 async function loadIndex(){
-  const res=await fetch(`index.json?v=${Date.now()}`,{cache:"no-store"});
-  const data=await res.json();
-  kifList=data.files;
+  const res = await fetch(`index.json?v=${Date.now()}`, { cache:"no-store" });
+  const data = await res.json();
+
+  kifList = Array.isArray(data.files) ? data.files : [];
+
+  setupMateFilterOptions();
+}
+
+// ==============================
+function setupMateFilterOptions(){
+  if(!mateFilterSelect) return;
+
+  mateFilterSelect.innerHTML = "";
+
+  const allOption = document.createElement("option");
+  allOption.value = "all";
+  allOption.textContent = "すべて";
+  mateFilterSelect.appendChild(allOption);
+
+  const uniqueMoves = [...new Set(
+    kifList
+      .map(item => Number(item.moves))
+      .filter(n => Number.isInteger(n) && n > 0)
+  )].sort((a, b) => a - b);
+
+  uniqueMoves.forEach(moves => {
+    const option = document.createElement("option");
+    option.value = String(moves);
+    option.textContent = `${moves}手詰み`;
+    mateFilterSelect.appendChild(option);
+  });
 }
 
 // ==============================
 async function loadRandomKif(){
+  if(kifList.length === 0) return;
 
-  if(kifList.length===0) return;
+  const selectedMate = mateFilterSelect ? mateFilterSelect.value : "all";
 
-  const file=kifList[Math.floor(Math.random()*kifList.length)];
+  const filteredList = selectedMate === "all"
+    ? kifList
+    : kifList.filter(item => Number(item.moves) === Number(selectedMate));
 
-  const res=await fetch(`kif/${file}?v=${Date.now()}`,{cache:"no-store"});
-  const buffer=await res.arrayBuffer();
+  if(filteredList.length === 0){
+    movesEl.innerHTML = "条件に合う詰将棋がありません";
+    return;
+  }
 
-  const text=new TextDecoder("shift_jis")
-    .decode(buffer)
-    .replace(/^\uFEFF/,'');
+  const selected = filteredList[Math.floor(Math.random() * filteredList.length)];
+  const fileName = selected.name;
 
-  boardPieces=[];
-  moves=[];
-  currentMoveIndex=0;
+  const res = await fetch(`kif/${fileName}?v=${Date.now()}`, { cache:"no-store" });
+  const buffer = await res.arrayBuffer();
+  const text = new TextDecoder("shift_jis").decode(buffer).replace(/^\uFEFF/, '');
+
+  boardPieces = [];
+  moves = [];
+  currentMoveIndex = 0;
+  currentSide = "sente";
+  lastMoveTo = null;
+  senteHands = "なし";
+  senteHandsMap = {};
+  goteHands = {};
 
   parseBoard(text);
   parseHands(text);
   parseKIF(text);
-  initHandsArea(); // 初期持ち駒描画
+  initHandsArea();
 
   await startAutoPlay();
 }
 
 // ==============================
 function parseBoard(text){
-
-  const lines=text.split(/\r?\n/).filter(l=>l.startsWith("|"));
+  const lines = text.split(/\r?\n/).filter(l => l.startsWith("|"));
 
   for(let y=0;y<9;y++){
+    let row = lines[y]
+      .replace(/\|/g, "")
+      .replace(/[一二三四五六七八九]/g, "")
+      .replace(/\s/g, "");
 
-    let row=lines[y]
-      .replace(/\|/g,"")
-      .replace(/[一二三四五六七八九]/g,"")
-      .replace(/\s/g,"");
+    const cells = row.match(/v?[歩香桂銀金角飛玉王と杏圭全龍馬]|・/g);
+    if(!cells) continue;
 
-    const cells=row.match(/v?[歩香桂銀金角飛玉王と杏圭全龍馬]|・/g);
-
-    for(let x=0;x<9;x++){
-
-      const cell=cells[x];
-      if(cell==="・") continue;
+    for(let i=0;i<9;i++){
+      const cell = cells[i];
+      if(cell === "・") continue;
 
       boardPieces.push({
-        file:9-x, // 右→左に順番
-        rank:y+1,
-        piece:cell.replace("v",""),
-        side:cell.startsWith("v")?"gote":"sente"
+        file: 9 - i, // 右端が1、左端が9
+        rank: y + 1,
+        piece: cell.replace("v",""),
+        side: cell.startsWith("v") ? "gote" : "sente"
       });
     }
   }
@@ -111,30 +156,27 @@ function parseBoard(text){
 }
 
 // ==============================
-// 盤面読み上げ（右→左固定）
+// 盤面読み上げ
 // ==============================
 async function readBoard(){
-
   await speak("ばんめんをよみあげます");
 
-  // 玉方
-  await speak("ぎょくかたのこま");
+  const gotePieces = boardPieces
+    .filter(p => p.side === "gote")
+    .sort((a,b) => a.rank - b.rank || a.file - b.file);
 
-  for(let rank=1;rank<=9;rank++){
-    for(let file=1;file<=9;file++){ // 右→左
-      const p=boardPieces.find(x=>x.rank===rank && x.file===file && x.side==="gote");
-      if(p) await speak(formatBoardYomi(p));
-    }
+  const sentePieces = boardPieces
+    .filter(p => p.side === "sente")
+    .sort((a,b) => a.rank - b.rank || a.file - b.file);
+
+  await speak("ぎょくかたのこま");
+  for(const p of gotePieces){
+    await speak(formatBoardYomi(p));
   }
 
-  // 攻め方
   await speak("せめかたのこま");
-
-  for(let rank=1;rank<=9;rank++){
-    for(let file=1;file<=9;file++){
-      const p=boardPieces.find(x=>x.rank===rank && x.file===file && x.side==="sente");
-      if(p) await speak(formatBoardYomi(p));
-    }
+  for(const p of sentePieces){
+    await speak(formatBoardYomi(p));
   }
 }
 
@@ -142,46 +184,297 @@ async function readBoard(){
 // 読みフォーマット
 // ==============================
 function formatBoardYomi(p){
-  const fileFull="９８７６５４３２１"[p.file-1];
-  const file=numberYomi[fileFull];
-  const rankKanji="一二三四五六七八九"[p.rank-1];
-  const rank=rankYomi[rankKanji];
-  const piece=pieceYomi[p.piece];
+  const fileFull = "１２３４５６７８９"[p.file - 1];
+  const file = numberYomi[fileFull];
+  const rankKanji = "一二三四五六七八九"[p.rank - 1];
+  const rank = rankYomi[rankKanji];
+  const piece = pieceYomi[p.piece];
   return `${file}${rank} ${piece}`;
 }
 
 // ==============================
+function handsTextToMap(handsText){
+  const map = {};
+  if(!handsText || handsText === "なし") return map;
+
+  const kanjiToNumber = {
+    "一":1,"二":2,"三":3,"四":4,"五":5,
+    "六":6,"七":7,"八":8,"九":9
+  };
+
+  const parts = handsText.split(/\s+/).filter(Boolean);
+  parts.forEach(part => {
+    const match = part.match(/^([歩香桂銀金角飛玉王])([一二三四五六七八九])?$/);
+    if(!match) return;
+
+    const piece = match[1];
+    const count = match[2] ? (kanjiToNumber[match[2]] || 1) : 1;
+    map[piece] = (map[piece] || 0) + count;
+  });
+
+  return map;
+}
+
+// ==============================
 function parseHands(text){
-  const line=text.split(/\r?\n/).find(l=>l.includes("先手の持駒"));
-  senteHands=line? (line.split("：")[1]||"").trim()||"なし":"なし";
+  const senteLine = text.split(/\r?\n/).find(l => l.includes("先手の持駒"));
+  senteHands = senteLine ? (senteLine.split("：")[1] || "").trim() || "なし" : "なし";
+
+  senteHandsMap = handsTextToMap(senteHands);
+  goteHands = {};
+}
+
+// ==============================
+function promotePiece(piece){
+  const promoteMap = {
+    "歩":"と",
+    "香":"杏",
+    "桂":"圭",
+    "銀":"全",
+    "角":"馬",
+    "飛":"龍"
+  };
+  return promoteMap[piece] || piece;
+}
+
+// ==============================
+function basePiece(piece){
+  const baseMap = {
+    "と":"歩",
+    "杏":"香",
+    "圭":"桂",
+    "全":"銀",
+    "馬":"角",
+    "龍":"飛"
+  };
+  return baseMap[piece] || piece;
+}
+
+// ==============================
+function addHandPiece(side, piece){
+  const base = basePiece(piece);
+  if(base === "玉" || base === "王") return;
+
+  const targetMap = side === "sente" ? senteHandsMap : goteHands;
+  targetMap[base] = (targetMap[base] || 0) + 1;
+
+  if(side === "sente"){
+    renderSenteHands();
+  }
+}
+
+// ==============================
+function removeHandPiece(side, piece){
+  const base = basePiece(piece);
+  const targetMap = side === "sente" ? senteHandsMap : goteHands;
+
+  if(!targetMap[base]) return false;
+
+  targetMap[base]--;
+  if(targetMap[base] <= 0){
+    delete targetMap[base];
+  }
+
+  if(side === "sente"){
+    renderSenteHands();
+  }
+
+  return true;
+}
+
+// ==============================
+function parseMove(move){
+  const trimmed = move.replace(/\(\d+\)/g, "").trim();
+
+  if(trimmed === "詰み"){
+    return { type: "end", raw: move };
+  }
+
+  const compact = trimmed.replace(/\s+/g, "");
+  const isSame = compact.startsWith("同");
+  const isDrop = compact.includes("打");
+  const isPromote = compact.includes("成");
+
+  let file = null;
+  let rank = null;
+  let piece = null;
+
+  if(isSame){
+    if(!lastMoveTo) return null;
+
+    file = lastMoveTo.file;
+    rank = lastMoveTo.rank;
+
+    const m = compact.match(/^同([玉王飛角金銀桂香歩と杏圭全龍馬])/);
+    if(!m) return null;
+    piece = m[1];
+  } else {
+    const m = compact.match(/^([１２３４５６７８９])([一二三四五六七八九])([玉王飛角金銀桂香歩と杏圭全龍馬])/);
+    if(!m) return null;
+
+    file = "１２３４５６７８９".indexOf(m[1]) + 1;
+    rank = "一二三四五六七八九".indexOf(m[2]) + 1;
+    piece = m[3];
+  }
+
+  return {
+    type: "move",
+    raw: move,
+    file,
+    rank,
+    piece,
+    isSame,
+    isDrop,
+    isPromote
+  };
+}
+
+// ==============================
+function isPathClear(fromFile, fromRank, toFile, toRank){
+  const stepFile = Math.sign(toFile - fromFile);
+  const stepRank = Math.sign(toRank - fromRank);
+
+  let f = fromFile + stepFile;
+  let r = fromRank + stepRank;
+
+  while(f !== toFile || r !== toRank){
+    const blocker = boardPieces.find(p => p.file === f && p.rank === r);
+    if(blocker) return false;
+    f += stepFile;
+    r += stepRank;
+  }
+
+  return true;
+}
+
+// ==============================
+function canMoveTo(pieceObj, toFile, toRank){
+  const df = toFile - pieceObj.file;
+  const dr = toRank - pieceObj.rank;
+
+  // 先手は前進=-1、後手は前進=+1 になるよう正規化
+  const forward = pieceObj.side === "sente" ? -1 : 1;
+  const rdf = df;
+  const rdr = dr * forward;
+
+  const p = pieceObj.piece;
+
+  switch(p){
+    case "歩":
+      return rdf === 0 && rdr === 1;
+
+    case "香":
+      if(rdf !== 0 || rdr <= 0) return false;
+      return isPathClear(pieceObj.file, pieceObj.rank, toFile, toRank);
+
+    case "桂":
+      return Math.abs(rdf) === 1 && rdr === 2;
+
+    case "銀":
+      return (
+        (Math.abs(rdf) === 1 && rdr === 1) ||
+        (Math.abs(rdf) === 1 && rdr === -1) ||
+        (rdf === 0 && rdr === 1)
+      );
+
+    case "金":
+    case "と":
+    case "杏":
+    case "圭":
+    case "全":
+      return (
+        (rdf === 0 && rdr === 1) ||
+        (Math.abs(rdf) === 1 && rdr === 1) ||
+        (Math.abs(rdf) === 1 && rdr === 0) ||
+        (rdf === 0 && rdr === -1)
+      );
+
+    case "角":
+      if(Math.abs(df) !== Math.abs(dr) || df === 0) return false;
+      return isPathClear(pieceObj.file, pieceObj.rank, toFile, toRank);
+
+    case "飛":
+      if(df !== 0 && dr !== 0) return false;
+      if(df === 0 && dr === 0) return false;
+      return isPathClear(pieceObj.file, pieceObj.rank, toFile, toRank);
+
+    case "馬":
+      if(Math.abs(df) === Math.abs(dr) && df !== 0){
+        return isPathClear(pieceObj.file, pieceObj.rank, toFile, toRank);
+      }
+      return (Math.abs(df) + Math.abs(dr) === 1);
+
+    case "龍":
+      if((df === 0 || dr === 0) && !(df === 0 && dr === 0)){
+        return isPathClear(pieceObj.file, pieceObj.rank, toFile, toRank);
+      }
+      return (Math.abs(df) === 1 && Math.abs(dr) === 1);
+
+    case "玉":
+    case "王":
+      return Math.abs(df) <= 1 && Math.abs(dr) <= 1 && !(df === 0 && dr === 0);
+
+    default:
+      return false;
+  }
+}
+
+// ==============================
+function findSourcePiece(moveInfo, side){
+  const targetPiece = basePiece(moveInfo.piece);
+
+  const candidates = boardPieces.filter(p =>
+    p.side === side &&
+    basePiece(p.piece) === targetPiece &&
+    canMoveTo(p, moveInfo.file, moveInfo.rank)
+  );
+
+  if(candidates.length === 0) return null;
+  if(candidates.length === 1) return candidates[0];
+
+  candidates.sort((a, b) => {
+    const da = Math.abs(a.file - moveInfo.file) + Math.abs(a.rank - moveInfo.rank);
+    const db = Math.abs(b.file - moveInfo.file) + Math.abs(b.rank - moveInfo.rank);
+    return da - db;
+  });
+
+  return candidates[0];
 }
 
 // ==============================
 function parseKIF(text){
-  text.split(/\r?\n/).forEach(l=>{
-    if(/^\d+/.test(l)){
-      const m=l.trim().split(/\s+/)[1];
-      if(m) moves.push(m);
-    }
+  moves = [];
+
+  text.split(/\r?\n/).forEach(line => {
+    const match = line.match(/^\s*\d+\s+(.+?)\s+\(/);
+    if(!match) return;
+
+    let move = match[1].trim();
+    move = move.replace(/\(\d+\)/g, "");
+    if(!move) return;
+
+    moves.push(move);
   });
 }
 
 // ==============================
 function drawPieces(){
-  const squares=document.querySelectorAll(".square");
-  squares.forEach(s=>{
-    s.className="square";
+  const squares = document.querySelectorAll(".square");
+
+  squares.forEach(s => {
+    s.className = "square";
     s.removeAttribute("data-piece");
   });
 
-  boardPieces.forEach(p=>{
-    const idx=(p.rank-1)*9+(9-p.file);
-    const sq=squares[idx];
+  boardPieces.forEach(p => {
+    const idx = (p.rank - 1) * 9 + (9 - p.file);
+    const sq = squares[idx];
+    if(!sq) return;
 
     sq.classList.add("hasPiece");
-    sq.dataset.piece=p.piece;
+    sq.dataset.piece = p.piece;
 
-    if(p.side==="gote") sq.classList.add("gote");
+    if(p.side === "gote") sq.classList.add("gote");
     if(["と","杏","圭","全","龍","馬"].includes(p.piece)){
       sq.classList.add("promoted");
     }
@@ -189,133 +482,193 @@ function drawPieces(){
 }
 
 // ==============================
-// 持ち駒描画
-// ==============================
-function initHandsArea(){
-  handsContainer.innerHTML="";
-  if(senteHands==="なし") return;
+function renderSenteHands(){
+  handsContainer.innerHTML = "";
 
-  const pieces = senteHands.split(/\s+/);
-  pieces.forEach(p=>{
-    const div=document.createElement("div");
-    div.className="handPiece";
-    let match=p.match(/([歩香桂銀金角飛玉王と杏圭全龍馬])([一二三四五六七八九])?/);
-    if(match){
-      const piece=match[1];
-      const num=match[2] ? match[2] : "一";
-      div.textContent=piece+"×"+rankYomi[num];
+  const order = ["飛","角","金","銀","桂","香","歩"];
+  const displayArr = [];
+
+  for(const piece of order){
+    const count = senteHandsMap[piece] || 0;
+    if(count > 0){
+      displayArr.push(piece + "×" + count);
     }
-    handsContainer.appendChild(div);
-  });
+  }
+
+  handsContainer.innerHTML = displayArr.join("<br>");
 }
 
 // ==============================
-function updateHandsArea(updatedHands){
-  handsContainer.innerHTML="";
-  if(!updatedHands || updatedHands.length===0) return;
-
-  updatedHands.forEach(p=>{
-    const div=document.createElement("div");
-    div.className="handPiece";
-    const num=p.num || 1;
-    div.textContent=p.piece+"×"+num;
-    handsContainer.appendChild(div);
-  });
+function initHandsArea(){
+  renderSenteHands();
 }
 
 // ==============================
 function convertMoveToYomi(move){
-  let r=move;
-  for(const k in numberYomi) r=r.replaceAll(k,numberYomi[k]);
-  for(const k in pieceYomi) r=r.replaceAll(k,pieceYomi[k]);
+  let r = move;
+  for(const k in numberYomi) r = r.replaceAll(k, numberYomi[k]);
+  for(const k in pieceYomi) r = r.replaceAll(k, pieceYomi[k]);
   return r.replaceAll("同","どう").replaceAll("成","なり").replaceAll("打","うち");
 }
 
 // ==============================
+function convertHandsToYomi(handsText){
+  if(!handsText || handsText === "なし") return "なし";
+
+  const parts = handsText.split(/\s+/).filter(Boolean);
+
+  const result = parts.map(part => {
+    const match = part.match(/^([歩香桂銀金角飛玉王と杏圭全龍馬])([一二三四五六七八九])?$/);
+    if(!match) return part;
+
+    const piece = pieceYomi[match[1]] || match[1];
+    const count = match[2] ? (rankYomi[match[2]] || match[2]) : "いち";
+
+    return `${piece} ${count}まい`;
+  });
+
+  return result.join("、");
+}
+
+// ==============================
 function loadVoices(){
-  voices=speechSynthesis.getVoices();
-  voiceSelect.innerHTML="";
-  voices.forEach((v,i)=>{
-    const o=document.createElement("option");
-    o.value=i;
-    o.textContent=v.name;
+  voices = speechSynthesis.getVoices();
+  voiceSelect.innerHTML = "";
+
+  voices.forEach((v, i) => {
+    const o = document.createElement("option");
+    o.value = i;
+    o.textContent = v.name;
     voiceSelect.appendChild(o);
   });
 }
-speechSynthesis.onvoiceschanged=loadVoices;
+speechSynthesis.onvoiceschanged = loadVoices;
 
+// ==============================
+function wait(ms){
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ==============================
+async function waitAndLoadNextPuzzle(){
+  const delaySec = Number(autoDelayInput.value) || 0;
+  await wait(delaySec * 1000);
+  await loadRandomKif();
+}
+
+// ==============================
 function speak(text){
-  return new Promise(res=>{
-    const u=new SpeechSynthesisUtterance(text);
-    u.voice=voices[voiceSelect.value];
-    u.onend=res;
+  return new Promise(res => {
+    const u = new SpeechSynthesisUtterance(text);
+    u.voice = voices[voiceSelect.value];
+    u.onend = res;
     speechSynthesis.speak(u);
   });
 }
 
 // ==============================
 async function startAutoPlay(){
-  movesEl.innerHTML="";
+  movesEl.innerHTML = "";
+
   await readBoard();
-  await speak("せめかたのもちごまは "+senteHands);
+  await speak("せめかたのもちごまは " + convertHandsToYomi(senteHands));
+
+  const delaySec = Number(autoDelayInput.value) || 0;
+  await wait(delaySec * 1000);
+
+  if(moves.length === 0){
+    movesEl.innerHTML = "手順を取得できませんでした";
+    return;
+  }
+
   await playMoves();
 }
 
 // ==============================
 async function playMoves(){
-  if(currentMoveIndex>=moves.length) return;
+  if(currentMoveIndex >= moves.length){
+    await waitAndLoadNextPuzzle();
+    return;
+  }
 
-  const move=moves[currentMoveIndex];
+  const move = moves[currentMoveIndex];
   await speak(convertMoveToYomi(move));
 
-  const div=document.createElement("div");
-  div.textContent=move;
+  const div = document.createElement("div");
+  div.textContent = move;
   movesEl.appendChild(div);
 
   applyMove(move);
   currentMoveIndex++;
+
   await playMoves();
 }
 
 // ==============================
 function applyMove(move){
-  if(move.startsWith("同")) return;
+  const info = parseMove(move);
+  if(!info) return;
 
-  const file="１２３４５６７８９".indexOf(move[0])+1;
-  const rank="一二三四五六七八九".indexOf(move[1])+1;
-
-  // 駒移動
-  const piece=boardPieces.find(p=>p.side==="sente");
-  if(piece){
-    piece.file=file;
-    piece.rank=rank;
+  if(info.type === "end"){
+    return;
   }
 
-  // 持ち駒増減
-  // 実装例: 打なら増やす
-  if(move.includes("打")){
-    let m=move.match(/([歩香桂銀金角飛玉王と杏圭全龍馬])/);
-    if(m){
-      const pieceChar=m[1];
-      const existing = Array.from(handsContainer.children).find(d=>d.textContent.startsWith(pieceChar));
-      if(existing){
-        const n = parseInt(existing.textContent.slice(-1))+1;
-        existing.textContent = pieceChar+"×"+n;
-      } else {
-        const div=document.createElement("div");
-        div.className="handPiece";
-        div.textContent = pieceChar+"×1";
-        handsContainer.appendChild(div);
-      }
+  const side = currentSide;
+  const enemySide = side === "sente" ? "gote" : "sente";
+
+  // 着手先の相手駒を取る
+  const capturedIndex = boardPieces.findIndex(p =>
+    p.file === info.file &&
+    p.rank === info.rank &&
+    p.side === enemySide
+  );
+
+  if(capturedIndex >= 0){
+    const capturedPiece = boardPieces[capturedIndex];
+    boardPieces.splice(capturedIndex, 1);
+    addHandPiece(side, capturedPiece.piece);
+  }
+
+  if(info.isDrop){
+    // 持ち駒から打つので1枚減らす
+    const removed = removeHandPiece(side, info.piece);
+    if(!removed){
+      console.warn(`${side} の持ち駒に ${info.piece} がありません`);
+      return;
+    }
+
+    boardPieces.push({
+      file: info.file,
+      rank: info.rank,
+      piece: basePiece(info.piece),
+      side: side
+    });
+  } else {
+    // 盤上の駒を移動
+    const source = findSourcePiece(info, side);
+    if(!source){
+      console.warn(`移動元が見つかりません: ${move}`);
+      return;
+    }
+
+    source.file = info.file;
+    source.rank = info.rank;
+
+    if(info.isPromote){
+      source.piece = promotePiece(source.piece);
     }
   }
+
+  lastMoveTo = { file: info.file, rank: info.rank };
+  currentSide = enemySide;
 
   drawPieces();
 }
 
 // ==============================
-startBtn.onclick=loadRandomKif;
+startBtn.onclick = loadRandomKif;
 
+// ==============================
 function resetGame(){
   location.reload();
 }
