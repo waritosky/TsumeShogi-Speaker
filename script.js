@@ -16,6 +16,7 @@ let goteHands = {};
 let senteHandsMap = {};
 let currentSide = "sente";
 let lastMoveTo = null;
+let lastPlayedFileName = null;
 
 // ==============================
 // 読み替えテーブル
@@ -102,8 +103,17 @@ async function loadRandomKif(){
     return;
   }
 
-  const selected = filteredList[Math.floor(Math.random() * filteredList.length)];
+  // 直前に再生したファイルを除外
+  let candidateList = filteredList.filter(item => item.name !== lastPlayedFileName);
+
+  // 候補がなくなる場合は除外しない（1件しかない条件など）
+  if(candidateList.length === 0){
+    candidateList = filteredList;
+  }
+
+  const selected = candidateList[Math.floor(Math.random() * candidateList.length)];
   const fileName = selected.name;
+  lastPlayedFileName = fileName;
 
   const res = await fetch(`kif/${fileName}?v=${Date.now()}`, { cache:"no-store" });
   const buffer = await res.arrayBuffer();
@@ -217,11 +227,16 @@ function handsTextToMap(handsText){
 
 // ==============================
 function parseHands(text){
-  const senteLine = text.split(/\r?\n/).find(l => l.includes("先手の持駒"));
+  const lines = text.split(/\r?\n/);
+
+  const senteLine = lines.find(l => l.includes("先手の持駒"));
+  const goteLine = lines.find(l => l.includes("後手の持駒"));
+
   senteHands = senteLine ? (senteLine.split("：")[1] || "").trim() || "なし" : "なし";
+  const goteHandsText = goteLine ? (goteLine.split("：")[1] || "").trim() || "なし" : "なし";
 
   senteHandsMap = handsTextToMap(senteHands);
-  goteHands = {};
+  goteHands = handsTextToMap(goteHandsText);
 }
 
 // ==============================
@@ -283,11 +298,15 @@ function removeHandPiece(side, piece){
 }
 
 // ==============================
-function parseMove(move){
-  const trimmed = move.replace(/\(\d+\)/g, "").trim();
+function parseMove(moveData){
+  const rawText = typeof moveData === "string" ? moveData : moveData.text;
+  const fromFile = typeof moveData === "string" ? null : moveData.fromFile;
+  const fromRank = typeof moveData === "string" ? null : moveData.fromRank;
+
+  const trimmed = rawText.trim();
 
   if(trimmed === "詰み"){
-    return { type: "end", raw: move };
+    return { type: "end", raw: rawText };
   }
 
   const compact = trimmed.replace(/\s+/g, "");
@@ -319,13 +338,15 @@ function parseMove(move){
 
   return {
     type: "move",
-    raw: move,
+    raw: rawText,
     file,
     rank,
     piece,
     isSame,
     isDrop,
-    isPromote
+    isPromote,
+    fromFile,
+    fromRank
   };
 }
 
@@ -445,16 +466,35 @@ function findSourcePiece(moveInfo, side){
 function parseKIF(text){
   moves = [];
 
-  text.split(/\r?\n/).forEach(line => {
+  const lines = text.split(/\r?\n/);
+  for(const line of lines){
     const match = line.match(/^\s*\d+\s+(.+?)\s+\(/);
-    if(!match) return;
+    if(!match) continue;
 
-    let move = match[1].trim();
-    move = move.replace(/\(\d+\)/g, "");
-    if(!move) return;
+    let moveText = match[1].trim();
+    if(!moveText) continue;
 
-    moves.push(move);
-  });
+    const fromMatch = moveText.match(/\((\d)(\d)\)$/);
+
+    let fromFile = null;
+    let fromRank = null;
+
+    if(fromMatch){
+      fromFile = Number(fromMatch[1]);
+      fromRank = Number(fromMatch[2]);
+      moveText = moveText.replace(/\(\d{2}\)$/g, "").trim();
+    }
+
+    moves.push({
+      text: moveText,
+      fromFile,
+      fromRank
+    });
+
+    if(moveText === "詰み"){
+      break;
+    }
+  }
 }
 
 // ==============================
@@ -591,22 +631,22 @@ async function playMoves(){
     return;
   }
 
-  const move = moves[currentMoveIndex];
-  await speak(convertMoveToYomi(move));
+  const moveData = moves[currentMoveIndex];
+  await speak(convertMoveToYomi(moveData.text));
 
   const div = document.createElement("div");
-  div.textContent = move;
+  div.textContent = moveData.text;
   movesEl.appendChild(div);
 
-  applyMove(move);
+  applyMove(moveData);
   currentMoveIndex++;
 
   await playMoves();
 }
 
 // ==============================
-function applyMove(move){
-  const info = parseMove(move);
+function applyMove(moveData){
+  const info = parseMove(moveData);
   if(!info) return;
 
   if(info.type === "end"){
@@ -630,7 +670,6 @@ function applyMove(move){
   }
 
   if(info.isDrop){
-    // 持ち駒から打つので1枚減らす
     const removed = removeHandPiece(side, info.piece);
     if(!removed){
       console.warn(`${side} の持ち駒に ${info.piece} がありません`);
@@ -644,10 +683,24 @@ function applyMove(move){
       side: side
     });
   } else {
-    // 盤上の駒を移動
-    const source = findSourcePiece(info, side);
+    let source = null;
+
+    // KIFの (31) などがある場合は、その位置の駒を直接使う
+    if(info.fromFile && info.fromRank){
+      source = boardPieces.find(p =>
+        p.file === info.fromFile &&
+        p.rank === info.fromRank &&
+        p.side === side
+      );
+    }
+
+    // 元位置が無い場合だけ従来の候補探索を使う
     if(!source){
-      console.warn(`移動元が見つかりません: ${move}`);
+      source = findSourcePiece(info, side);
+    }
+
+    if(!source){
+      console.warn(`移動元が見つかりません: ${info.raw}`);
       return;
     }
 
@@ -670,5 +723,6 @@ startBtn.onclick = loadRandomKif;
 
 // ==============================
 function resetGame(){
+  lastPlayedFileName = null;
   location.reload();
 }
